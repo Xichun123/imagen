@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imagen-skill"
+version = "0.1.0"
+description = "Provider-configured raster image generation and editing CLI"
+readme = "SKILL.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+dependencies = [
+  "openai==2.47.0",
+]
+
+[project.optional-dependencies]
+downscale = [
+  "Pillow>=10,<13",
+]
+test = []
+
+[tool.setuptools]
+py-modules = []
+
+[tool.unittest]
+start-directory = "tests"
+pattern = "test_*.py"

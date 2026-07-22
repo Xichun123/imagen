@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/imagen/providers.schema.json",
+  "title": "Imagen provider configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["providers"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "default_provider": {"type": "string", "minLength": 1},
+    "providers": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"minLength": 1},
+      "additionalProperties": {"$ref": "#/$defs/provider"}
+    }
+  },
+  "$defs": {
+    "optionalParams": {
+      "type": "string",
+      "enum": [
+        "size",
+        "quality",
+        "background",
+        "output_format",
+        "output_compression",
+        "moderation",
+        "input_fidelity"
+      ]
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "api_key_env", "models"],
+      "properties": {
+        "adapter": {"type": "string", "enum": ["openai_images"], "default": "openai_images"},
+        "url": {"type": "string", "format": "uri", "pattern": "^https?://"},
+        "api_key_env": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+        "default_model": {"type": "string", "minLength": 1},
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "timeout": {"type": "number", "exclusiveMinimum": 0},
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {"enum": ["1024x1024", "1536x1024", "1024x1536", "auto"]},
+            "quality": {"enum": ["low", "medium", "high", "auto"]},
+            "background": {"enum": ["transparent", "opaque", "auto"]},
+            "output_format": {"enum": ["png", "jpeg", "jpg", "webp"]},
+            "output_compression": {"type": "integer", "minimum": 0, "maximum": 100},
+            "moderation": {"type": "string", "minLength": 1},
+            "input_fidelity": {"enum": ["low", "high"]}
+          }
+        },
+        "supported_params": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/optionalParams"}
+        },
+        "extra_headers": {
+          "type": "object",
+          "propertyNames": {"minLength": 1},
+          "additionalProperties": {"type": "string"}
+        }
+      }
+    }
+  }
+}

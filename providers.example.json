@@ -1,0 +1,42 @@
+{
+  "$schema": "./providers.schema.json",
+  "default_provider": "primary",
+  "providers": {
+    "primary": {
+      "adapter": "openai_images",
+      "url": "https://primary-images.example/v1",
+      "api_key_env": "PRIMARY_IMAGE_API_KEY",
+      "default_model": "primary-image-model",
+      "models": [
+        "primary-image-model",
+        "primary-image-model-pro"
+      ],
+      "timeout": 120,
+      "defaults": {
+        "quality": "high",
+        "output_format": "png"
+      },
+      "supported_params": [
+        "size",
+        "quality",
+        "background",
+        "output_format",
+        "output_compression",
+        "moderation",
+        "input_fidelity"
+      ],
+      "extra_headers": {
+        "X-Client-Name": "imagen-skill"
+      }
+    },
+    "backup": {
+      "adapter": "openai_images",
+      "url": "https://backup-images.example/v1",
+      "api_key_env": "BACKUP_IMAGE_API_KEY",
+      "default_model": "backup-image-model",
+      "models": [
+        "backup-image-model"
+      ]
+    }
+  }
+}
