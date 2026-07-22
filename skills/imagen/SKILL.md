@@ -66,8 +66,8 @@ Taxonomy, prompting principles, and complete recipes live in:
 - Temporary batch JSONL: `tmp/imagen/`
 - Default final location: `output/imagen/`
 - Keep project-bound final assets inside the workspace.
-- Install project dependencies with `python -m pip install '.[downscale]'` (or the repository's normal package workflow) after user approval.
-- Run tests with `python -m unittest discover -s tests -v`.
+- From this Skill directory, install dependencies with `python -m pip install '.[downscale]'` (or the repository's normal package workflow) after user approval.
+- From this Skill directory, run tests with `python -m unittest discover -s tests -v`.
 
 ## Reference map
 

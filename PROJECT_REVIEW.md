@@ -4,10 +4,10 @@
 
 本次审查覆盖：
 
-- `SKILL.md`
-- `scripts/imagen.py`
-- `tests/test_imagen.py`
-- `references/*.md`
+- `skills/imagen/SKILL.md`
+- `skills/imagen/scripts/imagen.py`
+- `skills/imagen/tests/test_imagen.py`
+- `skills/imagen/references/*.md`
 - 供应商与模型配置
 - generate、edit、generate-batch 行为
 - 输出安全、错误处理、API 兼容性、依赖和项目维护性
@@ -45,9 +45,9 @@
 
 相关位置：
 
-- `scripts/imagen.py:41-44`
-- `scripts/imagen.py:686-719`
-- `scripts/imagen.py:741-756`
+- `skills/imagen/scripts/imagen.py:41-44`
+- `skills/imagen/scripts/imagen.py:686-719`
+- `skills/imagen/scripts/imagen.py:741-756`
 
 ### 2. 输出写入不是全量预检和原子操作
 
@@ -68,10 +68,10 @@
 
 相关位置：
 
-- `scripts/imagen.py:407-437`
-- `scripts/imagen.py:519-549`
-- `scripts/imagen.py:711-739`
-- `scripts/imagen.py:815-823`
+- `skills/imagen/scripts/imagen.py:407-437`
+- `skills/imagen/scripts/imagen.py:519-549`
+- `skills/imagen/scripts/imagen.py:711-739`
+- `skills/imagen/scripts/imagen.py:815-823`
 
 ### 3. 通用供应商能力仍受固定 API 协议限制
 
@@ -91,10 +91,10 @@
 
 相关位置：
 
-- `scripts/imagen.py:215-260`
-- `scripts/imagen.py:440-445`
-- `scripts/imagen.py:619-628`
-- `references/image-api.md:12-38`
+- `skills/imagen/scripts/imagen.py:215-260`
+- `skills/imagen/scripts/imagen.py:440-445`
+- `skills/imagen/scripts/imagen.py:619-628`
+- `skills/imagen/references/image-api.md:12-38`
 
 ### 4. 只验证当前供应商，不验证备用供应商
 
@@ -108,7 +108,7 @@
 
 相关位置：
 
-- `scripts/imagen.py:115-177`
+- `skills/imagen/scripts/imagen.py:115-177`
 
 ### 5. 参数验证与文档存在偏差
 
@@ -125,11 +125,11 @@
 
 相关位置：
 
-- `scripts/imagen.py:194-212`
-- `scripts/imagen.py:247-261`
-- `scripts/imagen.py:264-287`
-- `scripts/imagen.py:519-539`
-- `references/image-api.md:20-25,40-46`
+- `skills/imagen/scripts/imagen.py:194-212`
+- `skills/imagen/scripts/imagen.py:247-261`
+- `skills/imagen/scripts/imagen.py:264-287`
+- `skills/imagen/scripts/imagen.py:519-539`
+- `skills/imagen/references/image-api.md:20-25,40-46`
 
 ### 6. retry-after 小数解析错误
 
@@ -147,8 +147,8 @@ retry-after: 2.5 -> 2.0
 
 相关位置：
 
-- `scripts/imagen.py:552-565`
-- `scripts/imagen.py:586-610`
+- `skills/imagen/scripts/imagen.py:552-565`
+- `skills/imagen/scripts/imagen.py:586-610`
 
 ### 7. 测试覆盖主要集中在配置解析
 
@@ -207,11 +207,11 @@ uv pip install openai
 
 `SKILL.md` 当前约 272 行，与以下文件存在重复：
 
-- `references/cli.md`
-- `references/prompting.md`
-- `references/sample-prompts.md`
+- `skills/imagen/references/cli.md`
+- `skills/imagen/references/prompting.md`
+- `skills/imagen/references/sample-prompts.md`
 
-供应商配置示例同时存在于 `SKILL.md` 和 `references/cli.md`，后续修改容易遗漏同步。
+供应商配置示例同时存在于 `SKILL.md` 和 `skills/imagen/references/cli.md`，后续修改容易遗漏同步。
 
 建议让 `SKILL.md` 只保留触发条件、核心决策、执行规则和安全边界，把完整配置、taxonomy 和示例放入 references。
 
@@ -219,7 +219,7 @@ uv pip install openai
 
 **优先级：P2**
 
-`references/cli.md` 假设 Skill 位于：
+`skills/imagen/references/cli.md` 假设 Skill 位于：
 
 ```text
 $CODEX_HOME/skills/imagen
@@ -258,7 +258,7 @@ vector-like flat graphic rendered as raster
 - CI
 - JSON Schema 或 provider 配置示例文件
 
-此外，`scripts/imagen.py` 中存在未使用的 `_decode_and_write()`。
+此外，`skills/imagen/scripts/imagen.py` 中存在未使用的 `_decode_and_write()`。
 
 ---
 
@@ -318,7 +318,7 @@ vector-like flat graphic rendered as raster
 ### P2：文档和维护
 
 - [x] 缩短 `SKILL.md`，将完整供应商配置移到单一 reference
-- [x] 避免 `SKILL.md` 与 `references/cli.md` 重复维护配置示例
+- [x] 避免 `SKILL.md` 与 `skills/imagen/references/cli.md` 重复维护配置示例
 - [x] 增加 `providers.example.json`
 - [x] 增加 provider 配置 JSON Schema
 - [x] 将 Codex 专属路径说明改为跨 Agent 安装说明

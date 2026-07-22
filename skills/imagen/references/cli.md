@@ -23,7 +23,7 @@ export IMAGEN_ROOT="$PWD"
 export IMAGEN_CLI="$IMAGEN_ROOT/scripts/imagen.py"
 ```
 
-Typical roots include a Pi/agent skills directory, a Codex skills directory, or a checked-out project path. Use the path supplied by the active Agent/runtime. Install dependencies through that environment's normal package workflow; for this checkout use `python -m pip install '.[downscale]'` after approval.
+Typical roots include a Pi/agent skills directory, a Codex skills directory, or this repository's `skills/imagen/` path. Use the path supplied by the active Agent/runtime. After approval, install dependencies from the Skill directory with `cd "$IMAGEN_ROOT" && python -m pip install '.[downscale]'`.
 
 ## Provider configuration
 
