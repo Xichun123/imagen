@@ -48,11 +48,9 @@ Text-to-image body:
   }],
   "generationConfig": {
     "responseModalities": ["IMAGE"],
-    "responseFormat": {
-      "image": {
-        "aspectRatio": "16:9",
-        "imageSize": "2K"
-      }
+    "imageConfig": {
+      "aspectRatio": "16:9",
+      "imageSize": "2K"
     }
   }
 }

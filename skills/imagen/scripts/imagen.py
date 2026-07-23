@@ -903,7 +903,7 @@ class GoogleGenerateContentAdapter(ImageProviderAdapter):
         if payload.get("image_size") is not None:
             image_config["imageSize"] = payload["image_size"]
         if image_config:
-            generation_config["responseFormat"] = {"image": image_config}
+            generation_config["imageConfig"] = image_config
         return {
             "contents": [{"role": "user", "parts": parts}],
             "generationConfig": generation_config,

@@ -990,7 +990,7 @@ class ImagenGoogleAdapterTests(unittest.TestCase):
         self.assertEqual(body["contents"][0]["parts"], [{"text": "Create a landscape"}])
         self.assertEqual(body["generationConfig"]["responseModalities"], ["IMAGE"])
         self.assertEqual(
-            body["generationConfig"]["responseFormat"]["image"],
+            body["generationConfig"]["imageConfig"],
             {"aspectRatio": "16:9", "imageSize": "2K"},
         )
         self.assertEqual([item.b64_json for item in result.data], [self.image_b64])
