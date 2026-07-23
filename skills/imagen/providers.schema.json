@@ -31,11 +31,16 @@
     "provider": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["url", "api_key_env", "models"],
+      "required": ["url", "models"],
+      "oneOf": [
+        {"required": ["api_key_env"], "not": {"required": ["api_key"]}},
+        {"required": ["api_key"], "not": {"required": ["api_key_env"]}}
+      ],
       "properties": {
         "adapter": {"type": "string", "enum": ["openai_images"], "default": "openai_images"},
         "url": {"type": "string", "format": "uri", "pattern": "^https?://"},
         "api_key_env": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
+        "api_key": {"type": "string", "minLength": 1, "writeOnly": true},
         "default_model": {"type": "string", "minLength": 1},
         "models": {
           "type": "array",

@@ -26,7 +26,8 @@ Start from `providers.example.json`; editor validation is available through `pro
 
 - `default_provider` must name an entry in `providers`. It may be omitted for a single provider.
 - `url` must be an HTTP(S) API base URL. Displayed URLs are stripped of userinfo, query, and fragment data.
-- `api_key_env` names the environment variable containing the secret. Never store a key value in this JSON or in `extra_headers`.
+- Define exactly one credential field: `api_key_env` names an environment variable (recommended), while `api_key` stores the key directly.
+- A direct `api_key` is never included in CLI output. Keep that config private, restrict its file permissions, and never commit it. Do not put secrets in `extra_headers`.
 - `models` contains real API model IDs. `default_model` must occur in that array and may be omitted when it has one item.
 - `timeout` is an optional positive number of seconds.
 - `defaults` explicitly enables optional request parameters for that provider.
@@ -43,12 +44,27 @@ The OpenAI-compatible adapter uses the CLI retry loop and disables SDK retries (
 Provider: `--provider` > `default_provider` > sole provider.
 Model: `--model` > provider `default_model` > sole model.
 
-Configure secrets separately:
+Environment-backed credential (recommended):
+
+```json
+{"api_key_env": "IMAGE_API_KEY"}
+```
 
 ```bash
 export IMAGE_API_KEY="..."
+```
+
+Direct credential (supported, less safe):
+
+```json
+{"api_key": "sk-..."}
+```
+
+Then validate without revealing either credential:
+
+```bash
 python scripts/imagen.py config-check
 python scripts/imagen.py providers
 ```
 
-`config-check` validates every provider and fails if any referenced key variable is unset. `providers` lists defaults, models, sanitized URLs, adapters, and key status without printing secret values.
+`config-check` validates every provider and fails if any referenced environment variable is unset. `providers` reports `credential_source` and key status without printing secret values.

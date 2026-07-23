@@ -40,11 +40,11 @@ python -m pip install '.[downscale]'
 ```bash
 mkdir -p ~/.config/imagen
 cp skills/imagen/providers.example.json ~/.config/imagen/providers.json
-# 编辑 provider URL、模型和 api_key_env 后：
+# 编辑 provider URL、模型及 api_key_env（推荐）或 api_key 后：
 python skills/imagen/scripts/imagen.py config-check
 ```
 
-完整说明见 [`skills/imagen/references/provider-config.md`](skills/imagen/references/provider-config.md)。API key 只应保存在环境变量或 secret manager 中。
+完整说明见 [`skills/imagen/references/provider-config.md`](skills/imagen/references/provider-config.md)。推荐通过环境变量或 secret manager 提供 key；若使用直接 `api_key`，不要提交本地配置文件。
 
 ## 使用
 

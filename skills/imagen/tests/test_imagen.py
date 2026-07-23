@@ -539,6 +539,43 @@ class ImagenProviderConfigTests(unittest.TestCase):
         )
         self.assertEqual(json.loads(explicit.stdout)["provider"], "explicit")
 
+    def test_direct_api_keys_pass_config_check_without_being_printed(self):
+        data = json.loads(self.config.read_text(encoding="utf-8"))
+        secrets = {
+            "primary": "primary-direct-secret",
+            "backup": "backup-direct-secret",
+        }
+        for name, secret in secrets.items():
+            data["providers"][name].pop("api_key_env")
+            data["providers"][name]["api_key"] = secret
+        self.config.write_text(json.dumps(data), encoding="utf-8")
+
+        result = self.run_cli("config-check", "--config", str(self.config))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = result.stdout + result.stderr
+        self.assertNotIn(secrets["primary"], output)
+        self.assertNotIn(secrets["backup"], output)
+        rows = json.loads(result.stdout)["providers"]
+        self.assertTrue(all(row["credential_source"] == "config" for row in rows))
+        self.assertTrue(all(row["key_configured"] for row in rows))
+        self.assertTrue(all(row["api_key_env"] is None for row in rows))
+
+    def test_provider_requires_exactly_one_credential_field(self):
+        data = json.loads(self.config.read_text(encoding="utf-8"))
+        data["providers"]["primary"].pop("api_key_env")
+        self.config.write_text(json.dumps(data), encoding="utf-8")
+        missing = self.run_cli("providers", "--config", str(self.config))
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("exactly one of 'api_key_env' or 'api_key'", missing.stderr)
+
+        data["providers"]["primary"]["api_key_env"] = "PRIMARY_TEST_IMAGE_KEY"
+        data["providers"]["primary"]["api_key"] = "direct-secret"
+        self.config.write_text(json.dumps(data), encoding="utf-8")
+        both = self.run_cli("providers", "--config", str(self.config))
+        self.assertNotEqual(both.returncode, 0)
+        self.assertIn("exactly one of 'api_key_env' or 'api_key'", both.stderr)
+        self.assertNotIn("direct-secret", both.stderr)
+
 
 class ImagenP0SafetyTests(ImagenProviderConfigTests):
     def _run_main(self, *args):
@@ -547,6 +584,33 @@ class ImagenP0SafetyTests(ImagenProviderConfigTests):
             os.environ, {"PRIMARY_TEST_IMAGE_KEY": "test-key"}
         ):
             return imagen.main()
+
+    def test_live_request_accepts_direct_api_key(self):
+        data = json.loads(self.config.read_text(encoding="utf-8"))
+        direct_key = "primary-direct-secret"
+        data["providers"]["primary"].pop("api_key_env")
+        data["providers"]["primary"]["api_key"] = direct_key
+        self.config.write_text(json.dumps(data), encoding="utf-8")
+        encoded = base64.b64encode(b"direct-key-image").decode("ascii")
+
+        class FakeImages:
+            def generate(self, **payload):
+                return SimpleNamespace(data=[SimpleNamespace(b64_json=encoded)])
+
+        output = self.work / "direct.png"
+        client = SimpleNamespace(images=FakeImages())
+        with mock.patch.object(imagen, "_create_client", return_value=client) as create_client:
+            self._run_main(
+                "generate",
+                "--config",
+                str(self.config),
+                "--prompt",
+                "Test",
+                "--out",
+                str(output),
+            )
+        self.assertEqual(output.read_bytes(), b"direct-key-image")
+        self.assertEqual(create_client.call_args.args[1], direct_key)
 
     def test_entire_batch_is_preflighted_before_client_creation(self):
         jobs = self.work / "jobs.jsonl"

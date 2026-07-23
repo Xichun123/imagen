@@ -15,7 +15,7 @@ Generate and edit bitmap images with the bundled `scripts/imagen.py` CLI.
 - Treat style/composition reference images as references, not edit targets, unless the user asks to modify them.
 - Load provider configuration from `--config`, `IMAGEN_CONFIG_PATH`, or `~/.config/imagen/providers.json` in that order.
 - Use the configured default provider/model unless the user requests `--provider` or `--model`.
-- Never request, print, or store API-key values in chat or provider JSON. Ask the user to configure the named environment variable locally.
+- Prefer `api_key_env` so secrets stay outside provider JSON. Direct `api_key` storage is supported only when explicitly requested; never print or commit direct keys, and keep the local config private.
 - Do not automatically retry on another provider; explicit switching avoids duplicate requests and costs.
 - `--dry-run` performs validation and request planning without network calls, directories, or file writes.
 - Never overwrite existing output unless replacement was requested; use `--force` only in that case.

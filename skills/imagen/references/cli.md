@@ -11,7 +11,7 @@ All operations are subcommands of the same CLI.
 - `config-check`: validate every provider and referenced key status
 - `providers` / `list-providers`: list providers, models, defaults, adapters, and key status
 
-Real API calls require a provider config, the selected provider's API-key environment variable, and network access. `--dry-run` requires the config but allows a missing key.
+Real API calls require a provider config, a selected-provider credential (`api_key_env` or direct `api_key`), and network access. `--dry-run` allows a missing environment-backed key.
 
 ## Locate the CLI (works across Agents)
 

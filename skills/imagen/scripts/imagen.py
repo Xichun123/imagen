@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CLI for image generation or editing through preconfigured API providers.
 
-Loads provider URL, model ID, and API-key environment variable from a JSON config.
+Loads provider URL, model ID, and an environment-backed or direct API key from JSON config.
 Uses a structured prompt augmentation workflow and accepts provider-specific model identifiers.
 """
 
@@ -174,12 +174,24 @@ def _validate_provider_config(data: Dict[str, Any], config_path: Path) -> Dict[s
         if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             _die(f"Provider '{provider_name}' has an invalid HTTP(S) URL: {_safe_url(api_url)}")
         api_key_env = provider.get("api_key_env")
-        if not isinstance(api_key_env, str) or not re.fullmatch(
-            r"[A-Za-z_][A-Za-z0-9_]*", api_key_env
+        direct_api_key = provider.get("api_key")
+        has_key_env = api_key_env is not None
+        has_direct_key = direct_api_key is not None
+        if has_key_env == has_direct_key:
+            _die(
+                f"Provider '{provider_name}' must define exactly one of 'api_key_env' or 'api_key'."
+            )
+        if has_key_env and (
+            not isinstance(api_key_env, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", api_key_env)
         ):
             _die(
                 f"Provider '{provider_name}' must define a valid environment variable name in 'api_key_env'."
             )
+        if has_direct_key and (
+            not isinstance(direct_api_key, str) or not direct_api_key.strip()
+        ):
+            _die(f"Provider '{provider_name}' must define a non-empty string in 'api_key'.")
         models = _read_provider_models(provider_name, provider)
         default_model = provider.get("default_model")
         if default_model is not None and default_model not in models:
@@ -256,14 +268,19 @@ def _configure_provider(args: argparse.Namespace) -> None:
     if model_id is None and len(models) == 1:
         model_id = models[0]
     model_id = _resolve_provider_model(provider_name, models, model_id)
-    api_key_env = provider["api_key_env"]
-    api_key = os.getenv(api_key_env, "").strip()
-    if not api_key:
-        message = f"API key environment variable {api_key_env} for provider '{provider_name}' is not set."
-        if args.dry_run:
-            _warn(f"{message} Continuing because --dry-run does not call the API.")
-        else:
-            _die(message)
+    api_key_env = provider.get("api_key_env")
+    if api_key_env is not None:
+        api_key = os.getenv(api_key_env, "").strip()
+        credential_source = "environment"
+        if not api_key:
+            message = f"API key environment variable {api_key_env} for provider '{provider_name}' is not set."
+            if args.dry_run:
+                _warn(f"{message} Continuing because --dry-run does not call the API.")
+            else:
+                _die(message)
+    else:
+        api_key = provider["api_key"].strip()
+        credential_source = "config"
 
     args.config_path = config_path
     args.provider = provider_name
@@ -271,6 +288,7 @@ def _configure_provider(args: argparse.Namespace) -> None:
     args.safe_api_url = _safe_url(api_url)
     args.api_key = api_key
     args.api_key_env = api_key_env
+    args.credential_source = credential_source
     args.provider_models = models
     args.provider_defaults = dict(provider.get("defaults", {}))
     args.supported_params = provider.get("supported_params")
@@ -1314,7 +1332,8 @@ def _provider_rows(config_path: Path) -> Tuple[Dict[str, Any], List[Dict[str, An
     rows: List[Dict[str, Any]] = []
     for name in sorted(providers):
         provider = providers[name]
-        key_env = provider["api_key_env"]
+        key_env = provider.get("api_key_env")
+        credential_source = "environment" if key_env is not None else "config"
         rows.append(
             {
                 "provider": name,
@@ -1325,8 +1344,11 @@ def _provider_rows(config_path: Path) -> Tuple[Dict[str, Any], List[Dict[str, An
                 "default_model": provider.get("default_model")
                 or (provider["models"][0] if len(provider["models"]) == 1 else None),
                 "models": provider["models"],
+                "credential_source": credential_source,
                 "api_key_env": key_env,
-                "key_configured": bool(os.getenv(key_env, "").strip()),
+                "key_configured": (
+                    bool(os.getenv(key_env, "").strip()) if key_env is not None else True
+                ),
             }
         )
     return data, rows
@@ -1336,7 +1358,11 @@ def _config_check(args: argparse.Namespace) -> None:
     config_path = _resolve_config_path(args.config)
     _, rows = _provider_rows(config_path)
     _print_request({"config": str(config_path), "providers": rows, "valid": True})
-    missing = [row["api_key_env"] for row in rows if not row["key_configured"]]
+    missing = [
+        row["api_key_env"]
+        for row in rows
+        if row["credential_source"] == "environment" and not row["key_configured"]
+    ]
     if missing:
         _die(
             "Provider configuration is structurally valid, but these API key variables are unset: "
