@@ -14,6 +14,7 @@ import binascii
 from dataclasses import dataclass
 from io import BytesIO
 import json
+import mimetypes
 import os
 from pathlib import Path
 import re
@@ -21,7 +22,9 @@ import sys
 import tempfile
 import time
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import urlparse, urlunparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlparse, urlunparse
+from urllib.request import Request, urlopen
 
 DEFAULT_MODEL = None
 DEFAULT_SIZE = "1024x1024"
@@ -45,8 +48,15 @@ OPTIONAL_API_PARAMS = {
     "output_compression",
     "moderation",
     "input_fidelity",
+    "aspect_ratio",
+    "image_size",
 }
-SUPPORTED_ADAPTERS = {"openai_images"}
+SUPPORTED_ADAPTERS = {"openai_images", "google_generate_content"}
+GOOGLE_ASPECT_RATIOS = {
+    "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3",
+    "4:5", "5:4", "8:1", "9:16", "16:9", "21:9",
+}
+GOOGLE_IMAGE_SIZES = {"512", "1K", "2K", "4K"}
 
 MAX_IMAGE_BYTES = 50 * 1024 * 1024
 MAX_BATCH_JOBS = 500
@@ -227,7 +237,9 @@ def _validate_provider_config(data: Dict[str, Any], config_path: Path) -> Dict[s
         if supported is not None and any(k not in supported for k in defaults):
             _die(f"Provider '{provider_name}' defaults contains an unsupported parameter.")
         try:
-            _validate_generate_payload({"n": 1, **defaults})
+            default_payload = {"model": default_model or models[0], "n": 1, **defaults}
+            _validate_generate_payload(default_payload)
+            _get_adapter(adapter).validate_generate_payload(default_payload)
             default_format = _normalize_output_format(defaults.get("output_format"))
             _validate_transparency(defaults.get("background"), default_format)
             _validate_input_fidelity(defaults.get("input_fidelity"))
@@ -311,6 +323,8 @@ def _prepare_provider_params(args: argparse.Namespace) -> None:
         "output_compression": args.output_compression,
         "moderation": args.moderation,
         "input_fidelity": getattr(args, "input_fidelity", None),
+        "aspect_ratio": args.aspect_ratio,
+        "image_size": args.image_size,
     }
     supported = set(args.supported_params) if args.supported_params is not None else None
     if supported is not None:
@@ -683,6 +697,15 @@ class ImageProviderAdapter:
 
     name = ""
 
+    def endpoint(self, operation: str, model: str) -> str:
+        return "/v1/images/edits" if operation == "edit" else "/v1/images/generations"
+
+    def validate_generate_payload(self, payload: Dict[str, Any]) -> None:
+        return None
+
+    def validate_edit_payload(self, payload: Dict[str, Any], *, has_mask: bool) -> None:
+        self.validate_generate_payload(payload)
+
     def create_client(self, **kwargs: Any) -> Any:
         raise NotImplementedError
 
@@ -701,6 +724,16 @@ class ImageProviderAdapter:
 
 class OpenAIImagesAdapter(ImageProviderAdapter):
     name = "openai_images"
+
+    def validate_generate_payload(self, payload: Dict[str, Any]) -> None:
+        google_only = [
+            key for key in ("aspect_ratio", "image_size") if payload.get(key) is not None
+        ]
+        if google_only:
+            _die(
+                "Parameter(s) only supported by google_generate_content: "
+                + ", ".join(google_only)
+            )
 
     @staticmethod
     def _client_kwargs(
@@ -755,8 +788,202 @@ class OpenAIImagesAdapter(ImageProviderAdapter):
         return await client.images.generate(**payload)
 
 
+@dataclass(frozen=True)
+class _AdapterImage:
+    b64_json: str
+
+
+@dataclass(frozen=True)
+class _AdapterResult:
+    data: List[_AdapterImage]
+
+
+@dataclass(frozen=True)
+class _GoogleGenerateContentClient:
+    base_url: str
+    api_key: str
+    timeout: Optional[float]
+    extra_headers: Dict[str, str]
+
+    def post(self, model: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        endpoint = f"{self.base_url.rstrip('/')}/models/{quote(model, safe='')}:generateContent"
+        headers = {
+            key: value
+            for key, value in self.extra_headers.items()
+            if key.lower() not in {"content-type", "x-goog-api-key"}
+        }
+        headers.update({"Content-Type": "application/json", "x-goog-api-key": self.api_key})
+        request = Request(
+            endpoint,
+            data=json.dumps(body).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                raw = response.read()
+        except HTTPError as exc:
+            detail = exc.read(2048).decode("utf-8", errors="replace")
+            raise RuntimeError(f"Google generateContent returned HTTP {exc.code}: {detail}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"Google generateContent request failed: {exc.reason}") from exc
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeError) as exc:
+            raise RuntimeError("Google generateContent returned invalid JSON") from exc
+        if not isinstance(parsed, dict):
+            raise RuntimeError("Google generateContent response must be a JSON object")
+        return parsed
+
+
+class GoogleGenerateContentAdapter(ImageProviderAdapter):
+    """Gemini native image generation via the REST generateContent method."""
+
+    name = "google_generate_content"
+    _allowed_payload_keys = {
+        "model", "prompt", "n", "aspect_ratio", "image_size", "output_format"
+    }
+
+    def endpoint(self, operation: str, model: str) -> str:
+        return f"/models/{quote(model, safe='')}:generateContent"
+
+    def validate_generate_payload(self, payload: Dict[str, Any]) -> None:
+        if int(payload.get("n", 1)) != 1:
+            _die("Google generateContent supports exactly one requested image per call (n=1).")
+        unsupported = sorted(
+            key for key, value in payload.items()
+            if value is not None and key not in self._allowed_payload_keys
+        )
+        if unsupported:
+            _die(
+                "Google generateContent does not support CLI parameter(s): "
+                + ", ".join(unsupported)
+            )
+        aspect_ratio = payload.get("aspect_ratio")
+        if aspect_ratio is not None and aspect_ratio not in GOOGLE_ASPECT_RATIOS:
+            _die(
+                "aspect-ratio must be one of: " + ", ".join(sorted(GOOGLE_ASPECT_RATIOS))
+            )
+        image_size = payload.get("image_size")
+        if image_size is not None and image_size not in GOOGLE_IMAGE_SIZES:
+            _die("image-size must be one of 512, 1K, 2K, or 4K (uppercase K).")
+        if image_size is not None and str(payload.get("model", "")).startswith(
+            "gemini-2.5-flash-image"
+        ):
+            _die("gemini-2.5-flash-image does not support image-size configuration.")
+        output_format = payload.get("output_format")
+        if output_format is not None and _normalize_output_format(str(output_format)) != "png":
+            _die("Google generateContent currently supports PNG output in this CLI adapter.")
+
+    def validate_edit_payload(self, payload: Dict[str, Any], *, has_mask: bool) -> None:
+        self.validate_generate_payload(payload)
+        if has_mask:
+            _die("Google generateContent image editing does not support --mask.")
+
+    def create_client(self, **kwargs: Any) -> _GoogleGenerateContentClient:
+        return _GoogleGenerateContentClient(
+            base_url=kwargs["api_url"],
+            api_key=kwargs["api_key"],
+            timeout=kwargs.get("timeout"),
+            extra_headers=dict(kwargs.get("extra_headers") or {}),
+        )
+
+    def create_async_client(self, **kwargs: Any) -> _GoogleGenerateContentClient:
+        return self.create_client(**kwargs)
+
+    @staticmethod
+    def _request_body(payload: Dict[str, Any], image_parts: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        parts: List[Dict[str, Any]] = [{"text": str(payload["prompt"])}]
+        if image_parts:
+            parts.extend(image_parts)
+        generation_config: Dict[str, Any] = {"responseModalities": ["IMAGE"]}
+        image_config: Dict[str, Any] = {}
+        if payload.get("aspect_ratio") is not None:
+            image_config["aspectRatio"] = payload["aspect_ratio"]
+        if payload.get("image_size") is not None:
+            image_config["imageSize"] = payload["image_size"]
+        if image_config:
+            generation_config["responseFormat"] = {"image": image_config}
+        return {
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": generation_config,
+        }
+
+    @staticmethod
+    def _result(response: Dict[str, Any]) -> _AdapterResult:
+        images: List[_AdapterImage] = []
+        candidates = response.get("candidates")
+        if not isinstance(candidates, list):
+            feedback = response.get("promptFeedback")
+            raise RuntimeError(f"Google generateContent returned no candidates: {feedback or 'unknown reason'}")
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            content = candidate.get("content", {})
+            parts = content.get("parts", []) if isinstance(content, dict) else []
+            for part in parts:
+                if not isinstance(part, dict) or part.get("thought") is True:
+                    continue
+                inline = part.get("inlineData") or part.get("inline_data")
+                if not isinstance(inline, dict):
+                    continue
+                mime_type = inline.get("mimeType") or inline.get("mime_type")
+                data = inline.get("data")
+                if not isinstance(data, str) or not data:
+                    raise RuntimeError("Google generateContent returned an image without data")
+                if mime_type != "image/png":
+                    raise RuntimeError(
+                        f"Google generateContent returned unsupported image MIME type: {mime_type}"
+                    )
+                images.append(_AdapterImage(data))
+        if not images:
+            finish_reasons = [
+                candidate.get("finishReason")
+                for candidate in candidates
+                if isinstance(candidate, dict) and candidate.get("finishReason")
+            ]
+            raise RuntimeError(
+                "Google generateContent returned no final image"
+                + (f" (finish reasons: {', '.join(finish_reasons)})" if finish_reasons else "")
+            )
+        return _AdapterResult(images)
+
+    def generate(self, client: _GoogleGenerateContentClient, payload: Dict[str, Any]) -> _AdapterResult:
+        self.validate_generate_payload(payload)
+        return self._result(client.post(str(payload["model"]), self._request_body(payload)))
+
+    def edit(self, client: _GoogleGenerateContentClient, payload: Dict[str, Any]) -> _AdapterResult:
+        request_payload = dict(payload)
+        image_value = request_payload.pop("image")
+        has_mask = request_payload.pop("mask", None) is not None
+        self.validate_edit_payload(request_payload, has_mask=has_mask)
+        handles = image_value if isinstance(image_value, list) else [image_value]
+        image_parts: List[Dict[str, Any]] = []
+        for handle in handles:
+            filename = str(getattr(handle, "name", ""))
+            mime_type = mimetypes.guess_type(filename)[0]
+            if not mime_type or not mime_type.startswith("image/"):
+                raise RuntimeError(f"Could not determine image MIME type for Google input: {filename}")
+            encoded = base64.b64encode(handle.read()).decode("ascii")
+            image_parts.append(
+                {"inline_data": {"mime_type": mime_type, "data": encoded}}
+            )
+        return self._result(
+            client.post(
+                str(request_payload["model"]),
+                self._request_body(request_payload, image_parts),
+            )
+        )
+
+    async def generate_async(
+        self, client: _GoogleGenerateContentClient, payload: Dict[str, Any]
+    ) -> _AdapterResult:
+        return await asyncio.to_thread(self.generate, client, payload)
+
+
 ADAPTERS: Dict[str, ImageProviderAdapter] = {
     OpenAIImagesAdapter.name: OpenAIImagesAdapter(),
+    GoogleGenerateContentAdapter.name: GoogleGenerateContentAdapter(),
 }
 
 
@@ -913,7 +1140,12 @@ def _is_transient_error(exc: Exception) -> bool:
     if "timeout" in name or "timedout" in name or "tempor" in name:
         return True
     msg = str(exc).lower()
-    return "timeout" in msg or "timed out" in msg or "connection reset" in msg
+    return (
+        "timeout" in msg
+        or "timed out" in msg
+        or "connection reset" in msg
+        or re.search(r"\b(?:500|502|503|504)\b", msg) is not None
+    )
 
 
 async def _generate_one_with_retries(
@@ -1001,6 +1233,7 @@ def _preflight_generate_batch(args: argparse.Namespace) -> BatchPlan:
                 )
             payload = {k: v for k, v in payload.items() if v is not None}
             _validate_generate_payload(payload)
+            _get_adapter(args.adapter).validate_generate_payload(payload)
             effective_format = _normalize_output_format(payload.get("output_format"))
             _validate_transparency(payload.get("background"), effective_format)
             n = int(payload.get("n", 1))
@@ -1052,7 +1285,8 @@ async def _run_generate_batch(args: argparse.Namespace) -> int:
                 {
                     "provider": args.provider,
                     "api_url": args.safe_api_url,
-                    "endpoint": "/v1/images/generations",
+                    "adapter": args.adapter,
+                    "endpoint": _get_adapter(args.adapter).endpoint("generate", str(job.payload["model"])),
                     "job": job.index,
                     "outputs": [str(path) for path in job.outputs],
                     "outputs_downscaled": downscaled,
@@ -1137,6 +1371,7 @@ def _generate(args: argparse.Namespace) -> None:
     payload = {"model": args.model, "prompt": prompt, "n": args.n, **args.api_params}
     payload = {k: v for k, v in payload.items() if v is not None}
     _validate_generate_payload(payload)
+    _get_adapter(args.adapter).validate_generate_payload(payload)
 
     output_format = _normalize_output_format(payload.get("output_format"))
     _validate_transparency(payload.get("background"), output_format)
@@ -1154,7 +1389,8 @@ def _generate(args: argparse.Namespace) -> None:
             {
                 "provider": args.provider,
                 "api_url": args.safe_api_url,
-                "endpoint": "/v1/images/generations",
+                "adapter": args.adapter,
+                "endpoint": _get_adapter(args.adapter).endpoint("generate", str(payload["model"])),
                 "outputs": [str(p) for p in output_paths],
                 "outputs_downscaled": downscaled,
                 **payload,
@@ -1207,6 +1443,9 @@ def _edit(args: argparse.Namespace) -> None:
     payload = {"model": args.model, "prompt": prompt, "n": args.n, **args.api_params}
     payload = {k: v for k, v in payload.items() if v is not None}
     _validate_generate_payload(payload)
+    _get_adapter(args.adapter).validate_edit_payload(
+        payload, has_mask=mask_path is not None
+    )
 
     output_format = _normalize_output_format(payload.get("output_format"))
     _validate_transparency(payload.get("background"), output_format)
@@ -1229,7 +1468,8 @@ def _edit(args: argparse.Namespace) -> None:
             {
                 "provider": args.provider,
                 "api_url": args.safe_api_url,
-                "endpoint": "/v1/images/edits",
+                "adapter": args.adapter,
+                "endpoint": _get_adapter(args.adapter).endpoint("edit", str(payload["model"])),
                 "outputs": [str(p) for p in output_paths],
                 "outputs_downscaled": downscaled,
                 **payload_preview,
@@ -1393,6 +1633,8 @@ def _add_shared_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--n", type=int, default=1)
     parser.add_argument("--size")
     parser.add_argument("--quality")
+    parser.add_argument("--aspect-ratio")
+    parser.add_argument("--image-size")
     parser.add_argument("--background")
     parser.add_argument("--output-format")
     parser.add_argument("--output-compression", type=int)

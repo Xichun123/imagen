@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "imagen-skill"
-version = "0.2.0"
+version = "0.3.0"
 description = "Provider-configured raster image generation and editing CLI"
 readme = "SKILL.md"
 requires-python = ">=3.9"

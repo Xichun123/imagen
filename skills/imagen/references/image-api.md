@@ -7,11 +7,19 @@ These parameters describe the Image API surface used by `scripts/imagen.py`.
 - Each provider supplies `url`, exactly one credential field (`api_key_env` or `api_key`), and a `models` array; details are documented only in `references/provider-config.md`.
 - Provider IDs are arbitrary JSON object keys. Models are selected directly by their real API IDs.
 - The provider can be any vendor, gateway, proxy, or self-hosted service implementing the endpoints and response structure below.
-- Provider-specific APIs with unrelated paths, payloads, authentication, or response formats require an `ImageProviderAdapter` implementation and cannot be made compatible by changing the URL alone. The bundled adapter is `openai_images`.
+- Provider-specific APIs with unrelated paths, payloads, authentication, or response formats require an `ImageProviderAdapter` implementation and cannot be made compatible by changing the URL alone.
 
-## Endpoints
+## Adapters and endpoints
+
+`openai_images`:
 - Generate: `POST /v1/images/generations` (`client.images.generate(...)`)
 - Edit: `POST /v1/images/edits` (`client.images.edit(...)`)
+
+`google_generate_content`:
+- Generate and edit: `POST /v1/models/{model}:generateContent`
+- Authentication: `x-goog-api-key`
+- Response images: `candidates[].content.parts[].inlineData`
+- Full mapping: `references/google-generate-content.md`
 
 ## Core parameters
 - `prompt`: text prompt

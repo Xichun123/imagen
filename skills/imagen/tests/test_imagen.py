@@ -917,5 +917,192 @@ class ImagenP0SafetyTests(ImagenProviderConfigTests):
         self.assertEqual(adapter.calls, ["first"])
 
 
+class ImagenGoogleAdapterTests(unittest.TestCase):
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = json.dumps(payload).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return self.payload
+
+    def setUp(self):
+        self.adapter = imagen.GoogleGenerateContentAdapter()
+        self.client = imagen._GoogleGenerateContentClient(
+            base_url="https://generativelanguage.googleapis.com/v1",
+            api_key="google-test-key",
+            timeout=30,
+            extra_headers={"X-Test": "yes"},
+        )
+        self.image_b64 = base64.b64encode(b"google-image").decode("ascii")
+        self.response = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "thought": True,
+                                "inlineData": {
+                                    "mimeType": "image/png",
+                                    "data": base64.b64encode(b"thought").decode("ascii"),
+                                },
+                            },
+                            {"text": "Generated image"},
+                            {
+                                "inlineData": {
+                                    "mimeType": "image/png",
+                                    "data": self.image_b64,
+                                }
+                            },
+                        ]
+                    }
+                }
+            ]
+        }
+
+    def test_generate_content_request_and_response(self):
+        payload = {
+            "model": "gemini-3.1-flash-image",
+            "prompt": "Create a landscape",
+            "n": 1,
+            "aspect_ratio": "16:9",
+            "image_size": "2K",
+        }
+        with mock.patch.object(
+            imagen, "urlopen", return_value=self.FakeResponse(self.response)
+        ) as urlopen:
+            result = self.adapter.generate(self.client, payload)
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data)
+        self.assertEqual(
+            request.full_url,
+            "https://generativelanguage.googleapis.com/v1/models/"
+            "gemini-3.1-flash-image:generateContent",
+        )
+        self.assertEqual(request.get_header("X-goog-api-key"), "google-test-key")
+        self.assertEqual(request.get_header("X-test"), "yes")
+        self.assertEqual(body["contents"][0]["parts"], [{"text": "Create a landscape"}])
+        self.assertEqual(body["generationConfig"]["responseModalities"], ["IMAGE"])
+        self.assertEqual(
+            body["generationConfig"]["responseFormat"]["image"],
+            {"aspectRatio": "16:9", "imageSize": "2K"},
+        )
+        self.assertEqual([item.b64_json for item in result.data], [self.image_b64])
+
+    def test_google_edit_sends_inline_images(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            image_path = Path(tempdir) / "input.png"
+            image_path.write_bytes(b"input-image")
+            with image_path.open("rb") as image_file, mock.patch.object(
+                imagen, "urlopen", return_value=self.FakeResponse(self.response)
+            ) as urlopen:
+                result = self.adapter.edit(
+                    self.client,
+                    {
+                        "model": "gemini-3.1-flash-image",
+                        "prompt": "Change only the sky",
+                        "n": 1,
+                        "image": image_file,
+                    },
+                )
+
+        body = json.loads(urlopen.call_args.args[0].data)
+        parts = body["contents"][0]["parts"]
+        self.assertEqual(parts[0], {"text": "Change only the sky"})
+        self.assertEqual(parts[1]["inline_data"]["mime_type"], "image/png")
+        self.assertEqual(
+            base64.b64decode(parts[1]["inline_data"]["data"]), b"input-image"
+        )
+        self.assertEqual(result.data[0].b64_json, self.image_b64)
+
+    def test_google_adapter_rejects_unsupported_options_before_network(self):
+        base_payload = {
+            "model": "gemini-3.1-flash-image",
+            "prompt": "Test",
+            "n": 1,
+        }
+        invalid_payloads = [
+            {**base_payload, "n": 2},
+            {**base_payload, "quality": "high"},
+            {**base_payload, "aspect_ratio": "7:5"},
+            {**base_payload, "image_size": "2k"},
+            {**base_payload, "output_format": "jpeg"},
+            {
+                **base_payload,
+                "model": "gemini-2.5-flash-image",
+                "image_size": "2K",
+            },
+        ]
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload), self.assertRaises(imagen.ImagenError):
+                self.adapter.validate_generate_payload(payload)
+        with self.assertRaises(imagen.ImagenError):
+            self.adapter.validate_edit_payload(base_payload, has_mask=True)
+        self.assertTrue(
+            imagen._is_transient_error(
+                RuntimeError("Google generateContent returned HTTP 503: unavailable")
+            )
+        )
+
+    def test_google_provider_dry_run_uses_generate_content_endpoint(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            work = Path(tempdir)
+            config = work / "providers.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "providers": {
+                            "google": {
+                                "adapter": "google_generate_content",
+                                "url": "https://generativelanguage.googleapis.com/v1",
+                                "api_key_env": "UNSET_GEMINI_TEST_KEY",
+                                "models": ["gemini-3.1-flash-image"],
+                                "defaults": {
+                                    "aspect_ratio": "16:9",
+                                    "image_size": "2K",
+                                },
+                                "supported_params": ["aspect_ratio", "image_size"],
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env.pop("UNSET_GEMINI_TEST_KEY", None)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "generate",
+                    "--config",
+                    str(config),
+                    "--prompt",
+                    "Test",
+                    "--dry-run",
+                ],
+                cwd=work,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        preview = json.loads(result.stdout)
+        self.assertEqual(preview["adapter"], "google_generate_content")
+        self.assertEqual(
+            preview["endpoint"],
+            "/models/gemini-3.1-flash-image:generateContent",
+        )
+        self.assertEqual(preview["aspect_ratio"], "16:9")
+        self.assertEqual(preview["image_size"], "2K")
+
+
 if __name__ == "__main__":
     unittest.main()

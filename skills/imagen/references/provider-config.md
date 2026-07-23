@@ -33,9 +33,9 @@ Start from `providers.example.json`; editor validation is available through `pro
 - `defaults` explicitly enables optional request parameters for that provider.
 - `supported_params`, when present, rejects unsupported CLI/job parameters before a request.
 - `extra_headers` supplies non-secret static headers.
-- `adapter` selects a protocol implementation. `openai_images` is currently included; unrelated protocols require another `ImageProviderAdapter` implementation.
+- `adapter` selects a protocol implementation: `openai_images` uses OpenAI-compatible Images endpoints, while `google_generate_content` uses Gemini's native REST `generateContent` method. Other protocols require another `ImageProviderAdapter` implementation.
 
-Optional parameter names are `size`, `quality`, `background`, `output_format`, `output_compression`, `moderation`, and `input_fidelity`. The CLI only sends an optional parameter when it appears in provider `defaults`, a CLI flag, or a batch job override.
+Optional parameter names are `size`, `quality`, `background`, `output_format`, `output_compression`, `moderation`, `input_fidelity`, `aspect_ratio`, and `image_size`. The CLI only sends an optional parameter when it appears in provider `defaults`, a CLI flag, or a batch job override. See `references/google-generate-content.md` for Google-specific constraints.
 
 The OpenAI-compatible adapter uses the CLI retry loop and disables SDK retries (`max_retries=0`) to avoid multiplied attempts.
 

@@ -44,7 +44,7 @@ cp skills/imagen/providers.example.json ~/.config/imagen/providers.json
 python skills/imagen/scripts/imagen.py config-check
 ```
 
-完整说明见 [`skills/imagen/references/provider-config.md`](skills/imagen/references/provider-config.md)。推荐通过环境变量或 secret manager 提供 key；若使用直接 `api_key`，不要提交本地配置文件。
+完整说明见 [`skills/imagen/references/provider-config.md`](skills/imagen/references/provider-config.md)。Google Gemini `generateContent` 配置见 [`skills/imagen/references/google-generate-content.md`](skills/imagen/references/google-generate-content.md)。推荐通过环境变量或 secret manager 提供 key；若使用直接 `api_key`，不要提交本地配置文件。
 
 ## 使用
 
@@ -53,6 +53,14 @@ python skills/imagen/scripts/imagen.py providers
 python skills/imagen/scripts/imagen.py generate \
   --prompt "A cozy alpine cabin at dawn" \
   --out output/imagen/cabin.png
+
+# Google Gemini generateContent provider
+python skills/imagen/scripts/imagen.py generate \
+  --provider google \
+  --prompt "A cinematic alpine cabin at dawn" \
+  --aspect-ratio 16:9 \
+  --image-size 2K \
+  --out output/imagen/google-cabin.png
 ```
 
 ## 开发验证

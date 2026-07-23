@@ -74,6 +74,7 @@ Taxonomy, prompting principles, and complete recipes live in:
 - `references/cli.md`: commands, flags, batch format, output handling, and cross-Agent invocation.
 - `references/provider-config.md`: the single provider configuration reference.
 - `references/image-api.md`: adapter protocol and API parameter surface.
+- `references/google-generate-content.md`: Google Gemini `generateContent` configuration, mapping, and limits.
 - `references/prompting.md`: structure, specificity, invariants, and iteration.
 - `references/sample-prompts.md`: copy/paste recipes.
 - `references/codex-network.md`: Codex-specific network and sandbox notes.

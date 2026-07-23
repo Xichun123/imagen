@@ -25,7 +25,9 @@
         "output_format",
         "output_compression",
         "moderation",
-        "input_fidelity"
+        "input_fidelity",
+        "aspect_ratio",
+        "image_size"
       ]
     },
     "provider": {
@@ -37,7 +39,7 @@
         {"required": ["api_key"], "not": {"required": ["api_key_env"]}}
       ],
       "properties": {
-        "adapter": {"type": "string", "enum": ["openai_images"], "default": "openai_images"},
+        "adapter": {"type": "string", "enum": ["openai_images", "google_generate_content"], "default": "openai_images"},
         "url": {"type": "string", "format": "uri", "pattern": "^https?://"},
         "api_key_env": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"},
         "api_key": {"type": "string", "minLength": 1, "writeOnly": true},
@@ -59,7 +61,9 @@
             "output_format": {"enum": ["png", "jpeg", "jpg", "webp"]},
             "output_compression": {"type": "integer", "minimum": 0, "maximum": 100},
             "moderation": {"type": "string", "minLength": 1},
-            "input_fidelity": {"enum": ["low", "high"]}
+            "input_fidelity": {"enum": ["low", "high"]},
+            "aspect_ratio": {"enum": ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"]},
+            "image_size": {"enum": ["512", "1K", "2K", "4K"]}
           }
         },
         "supported_params": {

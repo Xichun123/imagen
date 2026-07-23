@@ -103,9 +103,10 @@ python "$IMAGEN_CLI" edit \
 ## Quality, input fidelity, and masks
 These are CLI controls available where noted.
 
-- `--quality` works for `generate`, `edit`, and `generate-batch`: `low|medium|high|auto`
-- `--input-fidelity` is **edit-only** and validated as `low|high`
-- `--mask` is **edit-only**
+- `--quality` works with providers that expose the OpenAI Images quality parameter: `low|medium|high|auto`
+- `--input-fidelity` is **edit-only** for compatible OpenAI Images providers and validated as `low|high`
+- `--mask` is **edit-only** and is not supported by `google_generate_content`
+- `--aspect-ratio` and `--image-size` configure Google Gemini image output; see `references/google-generate-content.md`
 
 Example:
 
@@ -181,7 +182,8 @@ Notes:
 - In batch runs, per-job `out` is treated as a filename under `--out-dir`.
 
 ## CLI notes
-- Supported sizes: `1024x1024`, `1536x1024`, `1024x1536`, or `auto`.
+- OpenAI Images `--size` values: `1024x1024`, `1536x1024`, `1024x1536`, or `auto`.
+- Google uses `--aspect-ratio` and `--image-size` instead of `--size`.
 - Transparent backgrounds require `output_format` to be `png` or `webp`.
 - `--prompt-file`, `--output-compression`, `--moderation`, `--max-attempts`, `--fail-fast`, `--force`, and `--no-augment` are supported.
 - Supported parameters and model behavior depend on the configured provider; use `--model` to select one of that provider's listed real model IDs.
